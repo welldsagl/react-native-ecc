@@ -1,34 +1,32 @@
 package com.rn.ecc;
 
 import android.annotation.TargetApi;
+import android.app.Fragment;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Build;
+import android.os.CancellationSignal;
 import android.security.KeyPairGeneratorSpec;
 import android.security.keystore.KeyGenParameterSpec;
+import android.security.keystore.KeyPermanentlyInvalidatedException;
 import android.security.keystore.KeyProperties;
 import android.util.Base64;
 import android.util.Log;
-
+import androidx.biometric.BiometricPrompt;
+import androidx.biometric.BiometricPrompt.AuthenticationCallback;
+import androidx.biometric.BiometricPrompt.PromptInfo;
+import androidx.fragment.app.FragmentActivity;
 import com.facebook.react.bridge.Callback;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.ReadableMap;
+import com.facebook.react.bridge.UiThreadUtil;
 
 import java.io.IOException;
 import java.math.BigInteger;
-import java.security.GeneralSecurityException;
-import java.security.InvalidAlgorithmParameterException;
-import java.security.InvalidKeyException;
-import java.security.KeyFactory;
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
-import java.security.KeyStore;
-import java.security.NoSuchAlgorithmException;
-import java.security.NoSuchProviderException;
-import java.security.PrivateKey;
-import java.security.Signature;
+import java.security.*;
+import java.security.cert.CertificateException;
 import java.security.interfaces.ECPublicKey;
 import java.security.spec.ECGenParameterSpec;
 import java.security.spec.ECPoint;
@@ -40,6 +38,8 @@ import java.util.GregorianCalendar;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 
 import javax.security.auth.x500.X500Principal;
 
@@ -92,6 +92,7 @@ public class ECCModule extends ReactContextBaseJavaModule {
                 .setDigests(KeyProperties.DIGEST_SHA256,
                         KeyProperties.DIGEST_SHA512,
                         KeyProperties.DIGEST_NONE)
+                .setUserAuthenticationRequired(true)
                 .setKeySize(sizeInBits)
                 .build());
 
@@ -118,6 +119,7 @@ public class ECCModule extends ReactContextBaseJavaModule {
                 .setKeySize(sizeInBits)
                 .setStartDate(start.getTime())
                 .setEndDate(end.getTime())
+                .setEncryptionRequired()
                 .setSubject(new X500Principal("CN=" + keyAlias))
                 .setSerialNumber(BigInteger.valueOf(Math.abs(keyAlias.hashCode())))
                 .build());
@@ -137,7 +139,7 @@ public class ECCModule extends ReactContextBaseJavaModule {
              * using the KeyPairGenerator API. The private key can only be
              * used for signing or verification and only with SHA-256,
              * SHA-512 or NONE as the message digest.
-            */
+             */
             KeyPairGenerator kpg = getKeyPairGenerator(sizeInBits, keyAlias);
             KeyPair kp = kpg.genKeyPair();
             ECPublicKey publicKey = (ECPublicKey)kp.getPublic();
@@ -186,36 +188,112 @@ public class ECCModule extends ReactContextBaseJavaModule {
         return constants;
     }
 
-    @ReactMethod
-    public void sign(ReadableMap map, Callback function) {
-        String publicKeyString = map.getString("pub");
-        String algorithm = getAlgorithm(map);
-        String signature = "";
-        try {
-            byte[] data = getDataProp(map);
-            KeyStore.Entry entry = getEntry(publicKeyString);
-            Signature s = Signature.getInstance(algorithm);
-            PrivateKey key = ((KeyStore.PrivateKeyEntry) entry).getPrivateKey();
-            s.initSign(key);
-            s.update(data);
-            byte[] signatureBytes = s.sign();
-            signature = toBase64(signatureBytes);
-//            WritableMap toVerify = new WritableNativeMap();
-//            toVerify.putString("sig", signature);
-//            toVerify.putString("pub", publicKeyString);
-//            toVerify.putString("data", map.getString("data"));
-//            toVerify.putString("algorithm", map.getString("algorithm"));
-//            boolean good = verify(toVerify);
-//            if (!good) {
-//                Log.e("sign", "ERR");
-//            }
-        } catch (Exception ex) {
-            Log.e("sign", "ERR", ex);
-            function.invoke(ex.toString(), null);
-            return;
-        }
 
-        function.invoke(null, signature);
+    public Signature getSignature(String algorithm) throws NoSuchAlgorithmException {
+        Signature sign = Signature.getInstance(algorithm);
+        return sign;
+    }
+    @ReactMethod
+    public void sign(final ReadableMap map, final Callback function) throws GeneralSecurityException{
+        final String publicKeyString = map.getString("pub");
+        final String algorithm = getAlgorithm(map);
+
+
+        UiThreadUtil.runOnUiThread(
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            PromptInfo promptInfo = new PromptInfo.Builder()
+                                    .setTitle("TITLE")
+                                    .setSubtitle("SUBTITLE")
+                                    .setDescription("DESCRIPTION")
+                                    .setNegativeButtonText("Cancel")
+                                    .build();
+
+                            Signature signature = getSignature(algorithm);
+
+
+                            String keyAlias = pref.getString(publicKeyString, null);
+
+                            KeyStore keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER_ANDROID_KEYSTORE);
+                            keyStore.load(null);
+
+                            PrivateKey privateKey = (PrivateKey) keyStore.getKey(keyAlias, null);
+                            signature.initSign(privateKey);
+
+                            BiometricPrompt.CryptoObject cryptoObject = new BiometricPrompt.CryptoObject(signature);
+
+                            Log.d("sign", "got signature");
+
+                            FragmentActivity fragmentActivity = (FragmentActivity) getCurrentActivity();
+
+                            Executor executor = Executors.newSingleThreadExecutor();
+                            BiometricPrompt biometricPrompt = new BiometricPrompt(fragmentActivity, executor,
+                                    new BiometricPrompt.AuthenticationCallback() {
+                                        @Override
+                                        public void onAuthenticationError(int errorCode,
+                                                                          CharSequence errString) {
+                                            super.onAuthenticationError(errorCode, errString);
+                                            Log.d("onAuthenticationError", errString.toString());
+                                        }
+
+                                        @Override
+                                        public void onAuthenticationSucceeded(
+                                                BiometricPrompt.AuthenticationResult result) {
+                                            super.onAuthenticationSucceeded(result);
+                                            Log.d("sign", "success");
+                                            try {
+                                                BiometricPrompt.CryptoObject cryptoObject = result.getCryptoObject();
+                                                Signature cryptoSignature = cryptoObject.getSignature();
+                                                byte[] data = getDataProp(map);
+                                                cryptoSignature.update(data);
+                                                byte[] signed = cryptoSignature.sign();
+                                                String base64Signature = toBase64(signed);
+                                                function.invoke(null, base64Signature);
+                                            } catch (Exception ex) {
+                                                Log.e("sign", "ERR", ex);
+                                                function.invoke(ex.toString(), null);
+                                                return;
+                                            }
+//                        try {
+//                          Signature signature = result.getCryptoObject().getSignature();
+//                          byte[] data = getDataProp(map);
+//                          KeyStore.Entry entry = getEntry(publicKeyString);
+//                          Signature s = Signature.getInstance(algorithm);
+//                          PrivateKey key = ((KeyStore.PrivateKeyEntry) entry).getPrivateKey();
+//                          s.initSign(key);
+//                          s.update(data);
+//                          byte[] signatureBytes = s.sign();
+//
+//                          String base64Signature = toBase64(signatureBytes);
+//                          function.invoke(null, base64Signature);
+//                        } catch (Exception ex) {
+//                          Log.e("sign", "ERR", ex);
+//                          function.invoke(ex.toString(), null);
+//                          return;
+//                        }
+
+                                        }
+
+                                        @Override
+                                        public void onAuthenticationFailed() {
+                                            Log.d("sign", "failed");
+                                            super.onAuthenticationFailed();
+                                        }
+                                    });
+
+
+                            biometricPrompt.authenticate(promptInfo, cryptoObject);
+
+                        } catch (Exception ex) {
+                            Log.e("sign", "ERR", ex);
+                            function.invoke(ex.toString(), null);
+                            return;
+                        }
+                    }
+                });
+
     }
 
     @ReactMethod
