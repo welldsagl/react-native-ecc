@@ -111,10 +111,6 @@ public class ECCModule extends ReactContextBaseJavaModule {
         Context context = getReactApplicationContext().getApplicationContext();
         kpg.initialize(new KeyPairGeneratorSpec.Builder(context)
                 .setAlias(keyAlias)
-                //                    KeyProperties.PURPOSE_SIGN | KeyProperties.PURPOSE_VERIFY)
-                //                    .setDigests(KeyProperties.DIGEST_SHA256,
-                //                                KeyProperties.DIGEST_SHA512,
-                //                                KeyProperties.DIGEST_NONE)
                 .setKeyType(KeyProperties.KEY_ALGORITHM_EC)
                 .setKeySize(sizeInBits)
                 .setStartDate(start.getTime())
@@ -196,53 +192,34 @@ public class ECCModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void sign(final ReadableMap map, final Callback function) throws GeneralSecurityException{
         final String publicKeyString = map.getString("pub");
-        final String algorithm = getAlgorithm(map);
 
+        final String message = map.getString("promptMessage");
+        final String title = map.getString("promptTitle");
+        final String cancel = map.getString("promptCancel");
+
+        final String algorithm = getAlgorithm(map);
 
         UiThreadUtil.runOnUiThread(
                 new Runnable() {
                     @Override
                     public void run() {
                         try {
+                            // prompt
                             PromptInfo promptInfo = new PromptInfo.Builder()
-                                    .setTitle("TITLE")
-                                    .setSubtitle("SUBTITLE")
-                                    .setDescription("DESCRIPTION")
-                                    .setNegativeButtonText("Cancel")
+                                    .setTitle(title)
+                                    .setDescription(message)
+                                    .setNegativeButtonText(cancel)
                                     .build();
 
-                            Signature signature = getSignature(algorithm);
-
-
-                            String keyAlias = pref.getString(publicKeyString, null);
-
-                            KeyStore keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER_ANDROID_KEYSTORE);
-                            keyStore.load(null);
-
-                            PrivateKey privateKey = (PrivateKey) keyStore.getKey(keyAlias, null);
-                            signature.initSign(privateKey);
-
-                            BiometricPrompt.CryptoObject cryptoObject = new BiometricPrompt.CryptoObject(signature);
-
-                            Log.d("sign", "got signature");
-
+                            // prompt dialog
                             FragmentActivity fragmentActivity = (FragmentActivity) getCurrentActivity();
-
                             Executor executor = Executors.newSingleThreadExecutor();
+
                             BiometricPrompt biometricPrompt = new BiometricPrompt(fragmentActivity, executor,
                                     new BiometricPrompt.AuthenticationCallback() {
                                         @Override
-                                        public void onAuthenticationError(int errorCode,
-                                                                          CharSequence errString) {
-                                            super.onAuthenticationError(errorCode, errString);
-                                            Log.d("onAuthenticationError", errString.toString());
-                                        }
-
-                                        @Override
-                                        public void onAuthenticationSucceeded(
-                                                BiometricPrompt.AuthenticationResult result) {
+                                        public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult result) {
                                             super.onAuthenticationSucceeded(result);
-                                            Log.d("sign", "success");
                                             try {
                                                 BiometricPrompt.CryptoObject cryptoObject = result.getCryptoObject();
                                                 Signature cryptoSignature = cryptoObject.getSignature();
@@ -252,44 +229,32 @@ public class ECCModule extends ReactContextBaseJavaModule {
                                                 String base64Signature = toBase64(signed);
                                                 function.invoke(null, base64Signature);
                                             } catch (Exception ex) {
-                                                Log.e("sign", "ERR", ex);
                                                 function.invoke(ex.toString(), null);
-                                                return;
                                             }
-//                        try {
-//                          Signature signature = result.getCryptoObject().getSignature();
-//                          byte[] data = getDataProp(map);
-//                          KeyStore.Entry entry = getEntry(publicKeyString);
-//                          Signature s = Signature.getInstance(algorithm);
-//                          PrivateKey key = ((KeyStore.PrivateKeyEntry) entry).getPrivateKey();
-//                          s.initSign(key);
-//                          s.update(data);
-//                          byte[] signatureBytes = s.sign();
-//
-//                          String base64Signature = toBase64(signatureBytes);
-//                          function.invoke(null, base64Signature);
-//                        } catch (Exception ex) {
-//                          Log.e("sign", "ERR", ex);
-//                          function.invoke(ex.toString(), null);
-//                          return;
-//                        }
-
                                         }
 
                                         @Override
-                                        public void onAuthenticationFailed() {
-                                            Log.d("sign", "failed");
-                                            super.onAuthenticationFailed();
+                                        public void onAuthenticationError(int errorCode, CharSequence errorCharSequence) {
+                                            super.onAuthenticationError(errorCode, errorCharSequence);
+                                            function.invoke(errorCharSequence.toString(), null);
                                         }
                                     });
 
+                            Signature signature = getSignature(algorithm);
+                            String keyAlias = pref.getString(publicKeyString, null);
 
+                            KeyStore keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER_ANDROID_KEYSTORE);
+                            keyStore.load(null);
+
+                            PrivateKey privateKey = (PrivateKey) keyStore.getKey(keyAlias, null);
+                            signature.initSign(privateKey);
+
+                            BiometricPrompt.CryptoObject cryptoObject = new BiometricPrompt.CryptoObject(signature);
                             biometricPrompt.authenticate(promptInfo, cryptoObject);
 
                         } catch (Exception ex) {
-                            Log.e("sign", "ERR", ex);
+                            Log.d("XXX exception",ex.toString() );
                             function.invoke(ex.toString(), null);
-                            return;
                         }
                     }
                 });
@@ -302,9 +267,7 @@ public class ECCModule extends ReactContextBaseJavaModule {
             boolean verified = verify(map);
             function.invoke(null, verified);
         } catch (Exception ex) {
-            Log.e("RNECC", "verify error", ex);
             function.invoke(ex.toString(), null);
-            return;
         }
     }
 
