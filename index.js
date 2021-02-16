@@ -86,7 +86,7 @@ function keyPair (curve, cb) {
  * @param  {String}          options.algorithm - algorithm to use to hash data before signing
  * @param  {Function} cb
  */
-function sign ({ pubKey, data, algorithm, promptMessage }, cb) {
+function sign ({ pubKey, data, algorithm, promptMessage, promptTitle, promptCancel }, cb) {
   checkServiceID()
   assert(Buffer.isBuffer(pubKey) || typeof pubKey === 'string')
   assert(Buffer.isBuffer(data) || typeof data === 'string')
@@ -101,6 +101,12 @@ function sign ({ pubKey, data, algorithm, promptMessage }, cb) {
 
   if(promptMessage){
     opts.promptMessage = promptMessage;
+  }
+  if(promptTitle){
+    opts.promptTitle = promptTitle;
+  }
+  if(promptCancel){
+    opts.promptCancel = promptCancel;
   }
 
   assert(typeof cb === 'function')
