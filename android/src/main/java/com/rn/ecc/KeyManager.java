@@ -21,6 +21,7 @@ import java.security.SignatureException;
 import java.security.UnrecoverableKeyException;
 import java.security.cert.CertificateException;
 import java.security.interfaces.ECPublicKey;
+import java.security.spec.InvalidKeySpecException;
 import java.util.UUID;
 
 public class KeyManager {
@@ -40,19 +41,12 @@ public class KeyManager {
      * The private key is stored in the KeyStore,
      */
     public String generateKeys() throws
-        CertificateException,
-        IOException,
         InvalidAlgorithmParameterException,
         InvalidKeyException,
-        KeyStoreException,
         NoSuchAlgorithmException,
         NoSuchProviderException {
 
         String keystoreAlias = UUID.randomUUID().toString();
-
-        // TODO: Check if needed.
-        KeyStore keyStore = KeyStore.getInstance(ANDROID_KEYSTORE);
-        keyStore.load(null);
 
         KeyPairGenerator keyPairGenerator = getKeyPairGenerator(keystoreAlias);
         KeyPair keyPair = keyPairGenerator.genKeyPair();
@@ -74,7 +68,6 @@ public class KeyManager {
                 return false;
             }
 
-            // TODO: Check if needed.
             KeyStore keystore = KeyStore.getInstance(ANDROID_KEYSTORE);
             keystore.load(null);
 
@@ -86,23 +79,34 @@ public class KeyManager {
         }
     }
 
-    public Signature getSignature(String publicKey) throws
+    public Signature getSigningSignature(String publicKey) throws
         CertificateException,
         NoSuchAlgorithmException,
         IOException,
         UnrecoverableKeyException,
         KeyStoreException,
         InvalidKeyException {
-
-        Signature signature = Signature.getInstance(ALGORITHM);
-        String keyAlias = sharedPreferences.getString(publicKey, null);
-
-        // TODO: Check if needed.
         KeyStore keyStore = KeyStore.getInstance(ANDROID_KEYSTORE);
         keyStore.load(null);
 
+        String keyAlias = sharedPreferences.getString(publicKey, null);
         PrivateKey privateKey = (PrivateKey) keyStore.getKey(keyAlias, null);
+
+        Signature signature = Signature.getInstance(ALGORITHM);
         signature.initSign(privateKey);
+        return signature;
+    }
+
+    public Signature getVerifyingSignature(String publicKey) throws
+        NoSuchAlgorithmException,
+        InvalidAlgorithmParameterException,
+        InvalidKeySpecException,
+        InvalidKeyException {
+        byte[] publicKeyBytes = Base64.decode(publicKey, Base64.NO_WRAP);
+        ECPublicKey ecPublicKey = EllipticCurveCryptography.decodeECPublicKey(publicKeyBytes);
+
+        Signature signature = Signature.getInstance(ALGORITHM);
+        signature.initVerify(ecPublicKey);
 
         return signature;
     }
@@ -114,14 +118,9 @@ public class KeyManager {
         return Base64.encodeToString(signedDataBytes, Base64.NO_WRAP);
     }
 
-    public boolean verify(String data, String publicKey, String expected) throws GeneralSecurityException {
+    public boolean verify(String data, String expected, Signature signature) throws GeneralSecurityException {
         byte[] dataBytes = Base64.decode(data, Base64.NO_WRAP);
-        byte[] publicKeyBytes = Base64.decode(publicKey, Base64.NO_WRAP);
         byte[] expectedBytes = Base64.decode(expected, Base64.NO_WRAP);
-
-        ECPublicKey ecPublicKey = EllipticCurveCryptography.decodeECPublicKey(publicKeyBytes);
-        Signature signature = Signature.getInstance(ALGORITHM);
-        signature.initVerify(ecPublicKey);
         signature.update(dataBytes);
         return signature.verify(expectedBytes);
     }

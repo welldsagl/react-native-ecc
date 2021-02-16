@@ -1,7 +1,6 @@
 package com.rn.ecc;
 
 import android.content.Context;
-import android.util.Log;
 
 import androidx.biometric.BiometricPrompt;
 import androidx.biometric.BiometricPrompt.PromptInfo;
@@ -17,7 +16,6 @@ import com.facebook.react.bridge.UiThreadUtil;
 import java.security.Signature;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 
 
@@ -62,8 +60,10 @@ public class ECCModule extends ReactContextBaseJavaModule {
 
     @ReactMethod
     public void sign(final ReadableMap map, final Callback function) {
+        final String data = map.hasKey("data")
+            ? map.getString("data")
+            : map.getString("hash");
         final String publicKey = map.getString("pub");
-
         final String message = map.getString("promptMessage");
         final String title = map.getString("promptTitle");
         final String cancel = map.getString("promptCancel");
@@ -73,32 +73,11 @@ public class ECCModule extends ReactContextBaseJavaModule {
                 @Override
                 public void run() {
                     try {
-                        FragmentActivity fragmentActivity = (FragmentActivity) getCurrentActivity();
-                        Executor executor = Executors.newSingleThreadExecutor();
-                        BiometricPrompt biometricPrompt = new BiometricPrompt(fragmentActivity, executor,
-                            new BiometricPrompt.AuthenticationCallback() {
-                                @Override
-                                public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult authenticationResult) {
-                                    super.onAuthenticationSucceeded(authenticationResult);
-                                    try {
-                                        BiometricPrompt.CryptoObject cryptoObject = authenticationResult.getCryptoObject();
-                                        Signature signature = cryptoObject.getSignature();
-                                        String data = map.hasKey("data")
-                                            ? map.getString("data")
-                                            : map.getString("hash");
-                                        String signedData = keyManager.sign(data, signature);
-                                        function.invoke(null, signedData);
-                                    } catch (Exception ex) {
-                                        function.invoke(ex.toString(), null);
-                                    }
-                                }
-
-                                @Override
-                                public void onAuthenticationError(int errorCode, CharSequence errorCharSequence) {
-                                    super.onAuthenticationError(errorCode, errorCharSequence);
-                                    function.invoke(errorCharSequence.toString(), null);
-                                }
-                            });
+                        BiometricPrompt biometricPrompt = new BiometricPrompt(
+                            (FragmentActivity) getCurrentActivity(),
+                            Executors.newSingleThreadExecutor(),
+                            new ECCAuthenticationCallback(keyManager, data, function)
+                        );
 
                         PromptInfo promptInfo = new PromptInfo.Builder()
                             .setTitle(title)
@@ -106,15 +85,15 @@ public class ECCModule extends ReactContextBaseJavaModule {
                             .setNegativeButtonText(cancel)
                             .build();
 
-                        Signature signature = keyManager.getSignature(publicKey);
+                        Signature signature = keyManager.getSigningSignature(publicKey);
                         BiometricPrompt.CryptoObject cryptoObject = new BiometricPrompt.CryptoObject(signature);
+
                         biometricPrompt.authenticate(promptInfo, cryptoObject);
                     } catch (Exception ex) {
                         function.invoke(ex.toString(), null);
                     }
                 }
             });
-
     }
 
     @ReactMethod
@@ -125,7 +104,9 @@ public class ECCModule extends ReactContextBaseJavaModule {
                 : map.getString("hash");
             String publicKey = map.getString("pub");
             String expected = map.getString("sig");
-            function.invoke(null, keyManager.verify(data, publicKey, expected));
+
+            Signature signature = keyManager.getVerifyingSignature(publicKey);
+            function.invoke(null, keyManager.verify(data, expected, signature));
         } catch (Exception ex) {
             function.invoke(ex.toString(), null);
         }
