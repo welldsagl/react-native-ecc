@@ -27,7 +27,7 @@ import java.util.UUID;
 public class KeyManager {
     private static final String ANDROID_KEYSTORE = "AndroidKeyStore";
     private static final int KEY_SIZE = 256;
-    private static final String ALGORITHM = "SHA256withECDSA";
+    private static final String ALGORITHM = "NONEwithECDSA";
 
     private SharedPreferences sharedPreferences;
 
@@ -115,13 +115,14 @@ public class KeyManager {
         byte[] dataBytes = Base64.decode(data, Base64.NO_WRAP);
         signature.update(dataBytes);
         byte[] signedDataBytes = signature.sign();
-        return Base64.encodeToString(signedDataBytes, Base64.NO_WRAP);
+        String signedData = Base64.encodeToString(signedDataBytes, Base64.NO_WRAP);
+        return signedData;
     }
 
     public boolean verify(String data, String expected, Signature signature) throws GeneralSecurityException {
         byte[] dataBytes = Base64.decode(data, Base64.NO_WRAP);
-        byte[] expectedBytes = Base64.decode(expected, Base64.NO_WRAP);
         signature.update(dataBytes);
+        byte[] expectedBytes = Base64.decode(expected, Base64.NO_WRAP);
         return signature.verify(expectedBytes);
     }
 
