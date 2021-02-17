@@ -54,7 +54,8 @@ public class ECCModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
-    public void hasKey(String publicKey, Callback function) {
+    public void hasKey(final ReadableMap map, Callback function) {
+        final String publicKey = map.getString("pub");
         function.invoke(null, keyManager.hasStoredKeysInKeystore(publicKey));
     }
 

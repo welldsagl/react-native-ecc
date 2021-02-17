@@ -1,40 +1,29 @@
 'use strict'
 
-import { NativeModules, Platform } from 'react-native'
+import { NativeModules } from 'react-native'
 import { Buffer } from 'buffer'
 import hasher from 'hash.js'
+
 const { RNECC } = NativeModules
+
 const preHash = RNECC.preHash !== false
-const isAndroid = Platform.OS === 'android'
+const algorithm = 'sha256'
 const encoding = 'base64'
-const curves = {
-  p192: 192,
-  p224: 224,
-  p256: 256,
-  p384: 384,
-  secp192r1: 192,
-  secp256r1: 256,
-  secp224r1: 224,
-  secp384r1: 384
-  // p521: 521 // should be supported, but SecKeyRawSign fails with OSStatus -1
-}
+const curve = 'secp256r1'
+const bits = 256
 
 let serviceID
 let accessGroup
 
 module.exports = {
-  encoding,
-  curves,
   setServiceID,
   getServiceID,
   setAccessGroup,
   getAccessGroup,
-  keyPair,
+  generateKeys,
   sign,
   verify,
-  lookupKey,
-  hasKey,
-  keyFromPublic
+  hasKeys,
 }
 
 function setServiceID (id) {
@@ -58,165 +47,119 @@ function getAccessGroup () {
 }
 
 /**
- * generates a new key pair, calls back with pub key
- * @param  {String}   curve - elliptic curve
- * @param  {Function} cb - calls back with a new key with the API: { sign, verify, pub }
+ * Generates public and private keys.
+ *
+ * The public key is returned with the given callback.
+ * The private key is saved in the Keychain/Keystore.
+ *
+ * @param {function} callback Callback invoked when the generation finishes. It
+ * will be called with an error if the generation fails or with the public key
+ * if it succeeds.
  */
-function keyPair (curve, cb) {
+function generateKeys(callback) {
   checkServiceID()
-  assert(typeof curve === 'string')
-  assert(typeof cb === 'function')
-  if (!(curve in curves)) throw new Error('unsupported curve')
+  assert(typeof callback === 'function')
 
-  let sizeInBits = curves[curve]
   RNECC.generateECPair({
-    curve: curve,
-    bits: sizeInBits,
     service: serviceID,
-    accessGroup: accessGroup
-  }, function (err, base64pubKey) {
-    cb(convertError(err), base64pubKey && keyFromPublic(toBuffer(base64pubKey)))
-  })
+    accessGroup: accessGroup,
+    curve,
+    bits,
+  }, callback)
 }
 
 /**
- * signs a hash
- * @param  {Buffer|String}   options.pubKey - pubKey corresponding to private key to sign hash with
- * @param  {Buffer|String}   options.data - data to sign
- * @param  {String}          options.algorithm - algorithm to use to hash data before signing
- * @param  {Function} cb
+ * Sign some data with a given public key.
+ *
+ * The user will be prompted with biometric authentication to sign data.
+ *
+ * @param {string} publicKey Public key to use to sign given data. The key must
+ * have been generated with the `generateKeys` method.
+ * @param {string} data Data to sign.
+ * @param {string} promptTitle Title of the biometric prompt.
+ * @param {string} promptMessage Message of the biometric prompt.
+ * @param {string} promptCancel Label of cancel button of the biometric prompt.
+ * @param {function} callback Callback invoked when the sign finishes. Will be
+ * called with an error if the signing fails or with signed data if it succeeds.
  */
-function sign ({ pubKey, data, algorithm, promptMessage, promptTitle, promptCancel }, cb) {
+function sign({ publicKey, data, promptTitle, promptMessage, promptCancel }, callback) {
   checkServiceID()
-  assert(Buffer.isBuffer(pubKey) || typeof pubKey === 'string')
-  assert(Buffer.isBuffer(data) || typeof data === 'string')
-
-  checkNotCompact(pubKey)
+  assert(typeof publicKey === 'string')
+  assert(typeof data === 'string')
+  assert(typeof callback === 'function')
 
   const opts = {
     service: serviceID,
     accessGroup: accessGroup,
-    pub: pubKey
+    pub: publicKey,
+    promptTitle,
+    promptMessage,
+    promptCancel,
   }
 
-  if(promptMessage){
-    opts.promptMessage = promptMessage;
-  }
-  if(promptTitle){
-    opts.promptTitle = promptTitle;
-  }
-  if(promptCancel){
-    opts.promptCancel = promptCancel;
-  }
-
-  assert(typeof cb === 'function')
   if (preHash) {
-    opts.hash = getHash(data, algorithm)
+    opts.hash = getHash(data)
   } else {
     opts.data = data
     opts.algorithm = algorithm
   }
 
-  RNECC.sign(normalizeOpts(opts), normalizeCallback(cb))
+  console.log('opts', opts);
+
+  RNECC.sign(opts, callback)
 }
 
 /**
- * verifies a signature
- * @param  {Buffer|String}   options.pubKey - pubKey corresponding to private key to sign hash with
- * @param  {Buffer|String}   options.data - signed data
- * @param  {String}          options.algorithm - algorithm used to hash data before it was signed
- * @param  {Buffer}          options.sig - signature
- * @param  {Function} cb
+ * Verify that some data has been signed correctly.
+ *
+ * @param {string} publicKey Public key needed to verify given data. The key
+ * must have been generated with the `generateKeys` method.
+ * @param {string} data Data pre-signing.
+ * @param {string} signedData Signed data.
+ * @param {function} callback Callback invoked when the verification finishes.
+ * It will be called with an error if the verification fails or with true/false
+ * if it succeeds.
  */
-function verify ({ pubKey, data, algorithm, sig }, cb) {
-  checkNotCompact(pubKey)
-
-  assert(Buffer.isBuffer(data) || typeof data === 'string')
-  assert(typeof pubKey === 'string' || Buffer.isBuffer(pubKey))
-  assert(typeof cb === 'function')
+function verify({ publicKey, data, signedData }, callback) {
+  assert(typeof data === 'string')
+  assert(typeof publicKey === 'string')
+  assert(typeof callback === 'function')
 
   const opts = {
-    pub: pubKey,
-    sig,
+    pub: publicKey,
+    sig: signedData,
   }
 
   if (preHash) {
-    opts.hash = getHash(data, algorithm)
+    opts.hash = getHash(data)
   } else {
     opts.data = data
     opts.algorithm = algorithm
   }
 
-  RNECC.verify(normalizeOpts(opts), normalizeCallback(cb))
+  RNECC.verify(opts, callback);
 }
 
-function normalizeOpts (opts) {
-  ;['data', 'hash', 'pub', 'sig'].forEach(prop => {
-    if (opts[prop]) opts[prop] = toString(opts[prop])
-  })
-
-  return opts
-}
-
-function hasKey (pubKey, cb) {
+/**
+ * Check whether private and public keys have been generated.
+ *
+ * @param {string} publicKey The public key we need to check the existence of.
+ * @param {function} callback Callback invoked when the check finishes. Will be
+ * called with an error if the check fails or with true/false if it succeeds.
+ */
+function hasKeys({ publicKey }, callback) {
   checkServiceID()
-  assert(Buffer.isBuffer(pubKey) || typeof pubKey === 'string')
-  checkNotCompact(pubKey)
-  pubKey = toString(pubKey)
-  cb = normalizeCallback(cb)
-  if (isAndroid) return RNECC.hasKey(pubKey, cb)
+  assert(typeof publicKey === 'string')
 
   RNECC.hasKey({
     service: serviceID,
     accessGroup: accessGroup,
-    pub: pubKey
-  }, cb)
-}
-
-function lookupKey (pubKey, cb) {
-  hasKey(pubKey, function (err, exists) {
-    if (err) return cb(convertError(err))
-    if (exists) return cb(null, keyFromPublic(pubKey))
-
-    cb(new Error('NotFound'))
-  })
-}
-
-/**
- * Returns a key with the API as the one returned by keyPair(...)
- * @param  {Buffer} pub pubKey buffer for existing key (created with keyPair(...))
- * @return {Object} key
- */
-function keyFromPublic (pubKey) {
-  checkNotCompact(pubKey)
-  let base64pub = toString(pubKey)
-  return {
-    sign: (opts, cb) => {
-      sign({ ...opts, pubKey: base64pub }, cb)
-    },
-    verify: (opts, cb) => {
-      verify({ ...opts, pubKey: base64pub }, cb)
-    },
-    pub: pubKey
-  }
+    pub: publicKey,
+  }, callback);
 }
 
 function assert (statement, errMsg) {
   if (!statement) throw new Error(errMsg || 'assertion failed')
-}
-
-function toString (buf) {
-  if (typeof buf === 'string') return buf
-  if (Buffer.isBuffer(buf)) return buf.toString(encoding)
-
-  return buf.toString()
-}
-
-function toBuffer (str) {
-  if (Buffer.isBuffer(str)) return str
-  if (typeof str === 'string') return new Buffer(str, encoding)
-
-  throw new Error('expected string or buffer')
 }
 
 function checkServiceID () {
@@ -225,36 +168,7 @@ function checkServiceID () {
   }
 }
 
-function convertError (error) {
-  if (!error) {
-    return null;
-  }
-
-  var message = error.message || (typeof error === 'string' ? error : JSON.stringify(error))
-  var out = new Error(message)
-  out.key = error.key // flow doesn't like this :(
-  return out
-}
-
-function normalizeCallback (cb) {
-  return function (err, result) {
-    if (err) return cb(convertError(err))
-
-    result = typeof result === 'string'
-      ? toBuffer(result)
-      : result
-
-    return cb(null, result)
-  }
-}
-
-function getHash (data, algorithm) {
-  if (!algorithm) return data
-
+function getHash (data) {
   const arr = hasher[algorithm]().update(data).digest()
-  return new Buffer(arr)
-}
-
-function checkNotCompact (pub) {
-  assert(toBuffer(pub)[0] === 4, 'compact keys not supported')
+  return new Buffer(arr).toString(encoding)
 }
