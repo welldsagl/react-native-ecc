@@ -1,6 +1,7 @@
 'use strict'
 
 import { NativeModules } from 'react-native'
+import bigInt from 'big-integer';
 import { Buffer } from 'buffer'
 import hasher from 'hash.js'
 
@@ -23,6 +24,7 @@ module.exports = {
   sign,
   verify,
   hasKeys,
+  computeCoordinates,
 }
 
 function setServiceID (id) {
@@ -137,6 +139,28 @@ function hasKeys({ publicKey }, callback) {
     accessGroup: accessGroup,
     pub: publicKey,
   }, callback);
+}
+
+/**
+ * Compute x and y coordinates for a given base64 public key.
+ *
+ * @param {string} publicKeyBase64 Public key in base 64.
+ * @return {{ x: string, y: string }} Coordinates of the given public key,
+ * represented as strings because they are too long for numbers.
+ */
+function computeCoordinates(publicKeyBase64) {
+  assert(typeof publicKeyBase64 === 'string')
+
+  const publicKeyHex = Buffer.from(publicKeyBase64, 'base64').toString('hex');
+  const publicKeyHexNo4 = publicKeyHex.slice(2);
+
+  const xHex = publicKeyHexNo4.slice(0, 64);
+  const yHex = publicKeyHexNo4.slice(64, 128);
+
+  const x = bigInt(xHex, 16).toString();
+  const y = bigInt(yHex, 16).toString();
+
+  return { x, y };
 }
 
 function assert (statement, errMsg) {
