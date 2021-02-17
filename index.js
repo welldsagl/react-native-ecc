@@ -6,7 +6,6 @@ import hasher from 'hash.js'
 
 const { RNECC } = NativeModules
 
-const preHash = RNECC.preHash !== false
 const algorithm = 'sha256'
 const encoding = 'base64'
 const curve = 'secp256r1'
@@ -88,25 +87,15 @@ function sign({ publicKey, data, promptTitle, promptMessage, promptCancel }, cal
   assert(typeof data === 'string')
   assert(typeof callback === 'function')
 
-  const opts = {
+  RNECC.sign({
     service: serviceID,
     accessGroup: accessGroup,
     pub: publicKey,
+    hash: getHash(data),
     promptTitle,
     promptMessage,
     promptCancel,
-  }
-
-  if (preHash) {
-    opts.hash = getHash(data)
-  } else {
-    opts.data = data
-    opts.algorithm = algorithm
-  }
-
-  console.log('opts', opts);
-
-  RNECC.sign(opts, callback)
+  }, callback)
 }
 
 /**
@@ -125,19 +114,11 @@ function verify({ publicKey, data, signedData }, callback) {
   assert(typeof publicKey === 'string')
   assert(typeof callback === 'function')
 
-  const opts = {
+  RNECC.verify({
     pub: publicKey,
     sig: signedData,
-  }
-
-  if (preHash) {
-    opts.hash = getHash(data)
-  } else {
-    opts.data = data
-    opts.algorithm = algorithm
-  }
-
-  RNECC.verify(opts, callback);
+    hash: getHash(data),
+  }, callback);
 }
 
 /**
