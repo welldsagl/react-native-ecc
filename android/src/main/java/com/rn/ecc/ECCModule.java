@@ -26,6 +26,9 @@ public class ECCModule extends ReactContextBaseJavaModule {
     private static final String KEY_TO_ALIAS_MAPPER = "key.to.alias.mapper";
     private final KeyManager keyManager;
 
+    public static final int ERROR_INVALID_PROMPT_PARAMETERS = 1000;
+    public static final int ERROR_INVALID_SIGNATURE = 1001;
+
     public ECCModule(ReactApplicationContext reactContext) {
         super(reactContext);
         this.keyManager = new KeyManager(reactContext.getSharedPreferences(KEY_TO_ALIAS_MAPPER, Context.MODE_PRIVATE));
@@ -61,9 +64,7 @@ public class ECCModule extends ReactContextBaseJavaModule {
 
     @ReactMethod
     public void sign(final ReadableMap map, final Callback function) {
-        final String data = map.hasKey("data")
-            ? map.getString("data")
-            : map.getString("hash");
+        final String data = map.getString("hash");
         final String publicKey = map.getString("pub");
         final String message = map.getString("promptMessage");
         final String title = map.getString("promptTitle");
@@ -90,8 +91,10 @@ public class ECCModule extends ReactContextBaseJavaModule {
                         BiometricPrompt.CryptoObject cryptoObject = new BiometricPrompt.CryptoObject(signature);
 
                         biometricPrompt.authenticate(promptInfo, cryptoObject);
+                    } catch (IllegalArgumentException ex) {
+                        function.invoke(ERROR_INVALID_PROMPT_PARAMETERS, null);
                     } catch (Exception ex) {
-                        function.invoke(ex.toString(), null);
+                        function.invoke(ERROR_INVALID_SIGNATURE, null);
                     }
                 }
             });
@@ -100,9 +103,7 @@ public class ECCModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void verify(ReadableMap map, Callback function) {
         try {
-            String data = map.hasKey("data")
-                ? map.getString("data")
-                : map.getString("hash");
+            String data = map.getString("hash");
             String publicKey = map.getString("pub");
             String expected = map.getString("sig");
 

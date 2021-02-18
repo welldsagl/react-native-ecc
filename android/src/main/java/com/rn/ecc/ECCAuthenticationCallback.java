@@ -26,13 +26,13 @@ public class ECCAuthenticationCallback extends BiometricPrompt.AuthenticationCal
             String signedData = keyManager.sign(data, signature);
             callback.invoke(null, signedData);
         } catch (Exception ex) {
-            callback.invoke(ex.toString(), null);
+            callback.invoke(ECCModule.ERROR_INVALID_SIGNATURE, null);
         }
     }
 
     @Override
     public void onAuthenticationError(int errorCode, CharSequence errorCharSequence) {
         super.onAuthenticationError(errorCode, errorCharSequence);
-        callback.invoke(errorCharSequence.toString(), null);
+        callback.invoke(errorCode, null);
     }
 }

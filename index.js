@@ -4,6 +4,7 @@ import { NativeModules } from 'react-native'
 import bigInt from 'big-integer';
 import { Buffer } from 'buffer'
 import hasher from 'hash.js'
+import ECCError, { ErrorCode } from './ECCError';
 
 const { RNECC } = NativeModules
 
@@ -25,6 +26,8 @@ module.exports = {
   verify,
   hasKeys,
   computeCoordinates,
+  ECCError,
+  ErrorCode,
 }
 
 function setServiceID (id) {
@@ -47,6 +50,18 @@ function getAccessGroup () {
   return accessGroup
 }
 
+function promisify(fnWithCallback, params) {
+  return new Promise((resolve, reject) => {
+    fnWithCallback(params, (error, response) => {
+      if (error) {
+        reject(new ECCError(error))
+      } else {
+        resolve(response)
+      }
+    });
+  });
+}
+
 /**
  * Generates public and private keys.
  *
@@ -57,16 +72,15 @@ function getAccessGroup () {
  * will be called with an error if the generation fails or with the public key
  * if it succeeds.
  */
-function generateKeys(callback) {
+function generateKeys() {
   checkServiceID()
-  assert(typeof callback === 'function')
 
-  RNECC.generateECPair({
+  return promisify(RNECC.generateECPair, {
     service: serviceID,
     accessGroup: accessGroup,
     curve,
     bits,
-  }, callback)
+  })
 }
 
 /**
@@ -83,13 +97,12 @@ function generateKeys(callback) {
  * @param {function} callback Callback invoked when the sign finishes. Will be
  * called with an error if the signing fails or with signed data if it succeeds.
  */
-function sign({ publicKey, data, promptTitle, promptMessage, promptCancel }, callback) {
+function sign({ publicKey, data, promptTitle, promptMessage, promptCancel }) {
   checkServiceID()
   assert(typeof publicKey === 'string')
   assert(typeof data === 'string')
-  assert(typeof callback === 'function')
 
-  RNECC.sign({
+  return promisify(RNECC.sign, {
     service: serviceID,
     accessGroup: accessGroup,
     pub: publicKey,
@@ -97,7 +110,7 @@ function sign({ publicKey, data, promptTitle, promptMessage, promptCancel }, cal
     promptTitle,
     promptMessage,
     promptCancel,
-  }, callback)
+  })
 }
 
 /**
@@ -111,16 +124,15 @@ function sign({ publicKey, data, promptTitle, promptMessage, promptCancel }, cal
  * It will be called with an error if the verification fails or with true/false
  * if it succeeds.
  */
-function verify({ publicKey, data, signedData }, callback) {
+function verify({ publicKey, data, signedData }) {
   assert(typeof data === 'string')
   assert(typeof publicKey === 'string')
-  assert(typeof callback === 'function')
 
-  RNECC.verify({
+  return promisify(RNECC.verify, {
     pub: publicKey,
     sig: signedData,
     hash: getHash(data),
-  }, callback);
+  })
 }
 
 /**
@@ -130,15 +142,15 @@ function verify({ publicKey, data, signedData }, callback) {
  * @param {function} callback Callback invoked when the check finishes. Will be
  * called with an error if the check fails or with true/false if it succeeds.
  */
-function hasKeys({ publicKey }, callback) {
+function hasKeys({ publicKey }) {
   checkServiceID()
   assert(typeof publicKey === 'string')
 
-  RNECC.hasKey({
+  return promisify(RNECC.hasKey, {
     service: serviceID,
     accessGroup: accessGroup,
     pub: publicKey,
-  }, callback);
+  })
 }
 
 /**
