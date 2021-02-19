@@ -1,10 +1,10 @@
 'use strict'
 
-import { NativeModules } from 'react-native'
+import { NativeModules, Platform } from 'react-native'
 import bigInt from 'big-integer';
 import { Buffer } from 'buffer'
 import hasher from 'hash.js'
-import ECCError, { ErrorCode } from './ECCError';
+import ECCError, { ErrorCode, AndroidErrorCode, IOSErrorCode } from './ECCError';
 
 const { RNECC } = NativeModules
 
@@ -52,9 +52,13 @@ function getAccessGroup () {
 
 function promisify(fnWithCallback, params) {
   return new Promise((resolve, reject) => {
-    fnWithCallback(params, (error, response) => {
-      if (error) {
-        reject(new ECCError(error))
+    fnWithCallback(params, (nativeErrorCode, response) => {
+      if (nativeErrorCode) {
+        const errorCode = Platform.select({
+          android: AndroidErrorCode[nativeErrorCode],
+          ios: IOSErrorCode[nativeErrorCode],
+        }) || ErrorCode.Generic;
+        reject(new ECCError(errorCode, nativeErrorCode))
       } else {
         resolve(response)
       }

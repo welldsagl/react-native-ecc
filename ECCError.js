@@ -1,5 +1,3 @@
-import { Platform } from 'react-native';
-
 export const ErrorCode = {
   Canceled: 'canceled',
   BiometryNotAvailable: 'biometry-not-available',
@@ -11,7 +9,7 @@ export const ErrorCode = {
 /**
  * Check: https://developer.android.com/reference/androidx/biometric/BiometricPrompt
  */
-const AndroidErrorCode = {
+export const AndroidErrorCode = {
   1: ErrorCode.BiometryNotAvailable,    // ERROR_HW_UNAVAILABLE
   2: ErrorCode.Generic,                 // ERROR_UNABLE_TO_PROCESS
   3: ErrorCode.Generic,                 // ERROR_TIMEOUT
@@ -33,7 +31,7 @@ const AndroidErrorCode = {
 /**
  * Check: https://developer.apple.com/documentation/security/1542001-security_framework_result_codes
  */
-const IOSErrorCode = {
+export const IOSErrorCode = {
   '-128': ErrorCode.Canceled,               // errSecUserCanceled: User canceled the operation.
   '-25291': ErrorCode.BiometryNotAvailable, // errSecNotAvailable: No keychain is available. You may need to restart your computer.
   '-25292': ErrorCode.Generic,              // errSecReadOnly: This keychain cannot be modified.
@@ -67,12 +65,9 @@ const IOSErrorCode = {
 };
 
 export default class ECCError extends Error {
-  constructor(nativeErrorCode) {
+  constructor(errorCode, nativeErrorCode) {
     super('ECC error');
-    this.code = Platform.select({
-      android: AndroidErrorCode[nativeErrorCode],
-      ios: IOSErrorCode[nativeErrorCode],
-    }) || ErrorCode.Generic;
+    this.code = errorCode;
     this.nativeCode = nativeErrorCode;
   }
 }
