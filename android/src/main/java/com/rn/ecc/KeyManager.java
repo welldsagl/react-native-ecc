@@ -135,6 +135,7 @@ public class KeyManager {
         KeyGenParameterSpec keyGenParameterSpec = new KeyGenParameterSpec.Builder(keystoreAlias, KeyProperties.PURPOSE_SIGN | KeyProperties.PURPOSE_VERIFY)
             .setDigests(KeyProperties.DIGEST_SHA256, KeyProperties.DIGEST_SHA512, KeyProperties.DIGEST_NONE)
             .setUserAuthenticationRequired(true)
+            .setInvalidatedByBiometricEnrollment(false)
             .setKeySize(KEY_SIZE)
             .build();
         keyPairGenerator.initialize(keyGenParameterSpec);
