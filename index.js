@@ -25,6 +25,7 @@ module.exports = {
   sign,
   verify,
   hasKeys,
+  cancelSigning,
   computeCoordinates,
   ECCError,
   ErrorCode,
@@ -115,6 +116,17 @@ function sign({ publicKey, data, promptTitle, promptMessage, promptCancel }) {
     promptMessage,
     promptCancel,
   })
+}
+
+/**
+ * Dismiss signing modal if open.
+ *
+ * This method only works on Android. On iOS it is not possible to
+ * programmatically dismiss the dialog (everything is handled by the Keychain).
+ * We still implement the method for iOS to avoid compatibility issues.
+ */
+function cancelSigning() {
+  return promisify(RNECC.cancelSigning, {})
 }
 
 /**

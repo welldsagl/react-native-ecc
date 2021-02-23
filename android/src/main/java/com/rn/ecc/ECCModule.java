@@ -25,6 +25,7 @@ import java.util.concurrent.Executors;
 public class ECCModule extends ReactContextBaseJavaModule {
     private static final String KEY_TO_ALIAS_MAPPER = "key.to.alias.mapper";
     private final KeyManager keyManager;
+    private BiometricPrompt biometricPrompt;
 
     public static final int ERROR_INVALID_PROMPT_PARAMETERS = 1000;
     public static final int ERROR_INVALID_SIGNATURE = 1001;
@@ -75,7 +76,7 @@ public class ECCModule extends ReactContextBaseJavaModule {
                 @Override
                 public void run() {
                     try {
-                        BiometricPrompt biometricPrompt = new BiometricPrompt(
+                        biometricPrompt = new BiometricPrompt(
                             (FragmentActivity) getCurrentActivity(),
                             Executors.newSingleThreadExecutor(),
                             new ECCAuthenticationCallback(keyManager, data, function)
@@ -112,5 +113,14 @@ public class ECCModule extends ReactContextBaseJavaModule {
         } catch (Exception ex) {
             function.invoke(ex.toString(), null);
         }
+    }
+
+    @ReactMethod
+    public void cancelSigning(ReadableMap map, Callback function) {
+        if (biometricPrompt != null) {
+            biometricPrompt.cancelAuthentication();
+            biometricPrompt = null;
+        }
+        function.invoke(null, null);
     }
 }
