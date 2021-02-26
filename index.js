@@ -16,55 +16,9 @@ const bits = 256
 let serviceID
 let accessGroup
 
-module.exports = {
-  setServiceID,
-  getServiceID,
-  setAccessGroup,
-  getAccessGroup,
-  generateKeys,
-  sign,
-  verify,
-  hasKeys,
-  cancelSigning,
-  computeCoordinates,
-  ECCError,
-  ErrorCode,
-}
-
-function setServiceID (id) {
+function setServiceID(id) {
   if (serviceID) throw new Error('serviceID can only be set once')
-
   serviceID = id
-}
-
-function getServiceID () {
-  return serviceID
-}
-
-function setAccessGroup (val) {
-  if (accessGroup) throw new Error('accessGroup can only be set once')
-
-  accessGroup = val
-}
-
-function getAccessGroup () {
-  return accessGroup
-}
-
-function promisify(fnWithCallback, params) {
-  return new Promise((resolve, reject) => {
-    fnWithCallback(params, (nativeErrorCode, response) => {
-      if (nativeErrorCode) {
-        const errorCode = Platform.select({
-          android: AndroidErrorCode[nativeErrorCode],
-          ios: IOSErrorCode[nativeErrorCode],
-        }) || ErrorCode.Generic;
-        reject(new ECCError(errorCode, nativeErrorCode))
-      } else {
-        resolve(response)
-      }
-    });
-  });
 }
 
 /**
@@ -73,9 +27,8 @@ function promisify(fnWithCallback, params) {
  * The public key is returned with the given callback.
  * The private key is saved in the Keychain/Keystore.
  *
- * @param {function} callback Callback invoked when the generation finishes. It
- * will be called with an error if the generation fails or with the public key
- * if it succeeds.
+ * @return {Promise} It will reject with an error if the generation fails, it
+ * will resolve with the public key in base64 if it succeeds.
  */
 function generateKeys() {
   checkServiceID()
@@ -99,8 +52,8 @@ function generateKeys() {
  * @param {string} promptTitle Title of the biometric prompt.
  * @param {string} promptMessage Message of the biometric prompt.
  * @param {string} promptCancel Label of cancel button of the biometric prompt.
- * @param {function} callback Callback invoked when the sign finishes. Will be
- * called with an error if the signing fails or with signed data if it succeeds.
+ * @return {Promise} Will reject with an error if the signing fails, will
+ * resolve with signed data if it succeeds.
  */
 function sign({ publicKey, data, promptTitle, promptMessage, promptCancel }) {
   checkServiceID()
@@ -124,49 +77,11 @@ function sign({ publicKey, data, promptTitle, promptMessage, promptCancel }) {
  * This method only works on Android. On iOS it is not possible to
  * programmatically dismiss the dialog (everything is handled by the Keychain).
  * We still implement the method for iOS to avoid compatibility issues.
+ *
+ * @return {Promise} It will always resolve when the operation completes.
  */
 function cancelSigning() {
   return promisify(RNECC.cancelSigning, {})
-}
-
-/**
- * Verify that some data has been signed correctly.
- *
- * @param {string} publicKey Public key needed to verify given data. The key
- * must have been generated with the `generateKeys` method.
- * @param {string} data Data pre-signing.
- * @param {string} signedData Signed data.
- * @param {function} callback Callback invoked when the verification finishes.
- * It will be called with an error if the verification fails or with true/false
- * if it succeeds.
- */
-function verify({ publicKey, data, signedData }) {
-  assert(typeof data === 'string')
-  assert(typeof publicKey === 'string')
-
-  return promisify(RNECC.verify, {
-    pub: publicKey,
-    sig: signedData,
-    hash: getHash(data),
-  })
-}
-
-/**
- * Check whether private and public keys have been generated.
- *
- * @param {string} publicKey The public key we need to check the existence of.
- * @param {function} callback Callback invoked when the check finishes. Will be
- * called with an error if the check fails or with true/false if it succeeds.
- */
-function hasKeys({ publicKey }) {
-  checkServiceID()
-  assert(typeof publicKey === 'string')
-
-  return promisify(RNECC.hasKey, {
-    service: serviceID,
-    accessGroup: accessGroup,
-    pub: publicKey,
-  })
 }
 
 /**
@@ -191,6 +106,22 @@ function computeCoordinates(publicKeyBase64) {
   return { x, y };
 }
 
+function promisify(fnWithCallback, params) {
+  return new Promise((resolve, reject) => {
+    fnWithCallback(params, (nativeErrorCode, response) => {
+      if (nativeErrorCode) {
+        const errorCode = Platform.select({
+          android: AndroidErrorCode[nativeErrorCode],
+          ios: IOSErrorCode[nativeErrorCode],
+        }) || ErrorCode.Generic;
+        reject(new ECCError(errorCode, nativeErrorCode))
+      } else {
+        resolve(response)
+      }
+    });
+  });
+}
+
 function assert (statement, errMsg) {
   if (!statement) throw new Error(errMsg || 'assertion failed')
 }
@@ -205,3 +136,13 @@ function getHash (data) {
   const arr = hasher[algorithm]().update(data).digest()
   return new Buffer(arr).toString(encoding)
 }
+
+export default {
+  setServiceID,
+  generateKeys,
+  sign,
+  cancelSigning,
+  computeCoordinates,
+  ECCError,
+  ErrorCode,
+};
