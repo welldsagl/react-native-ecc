@@ -1,15 +1,15 @@
-export const ErrorCode = {
+export const ErrorCode = Object.freeze({
   Canceled: 'canceled',
   BiometryNotAvailable: 'biometry-not-available',
   LockoutTemporarily: 'lockout-temporarily',
   LockoutPermanent: 'lockout-permanent',
   Generic: 'generic',
-};
+});
 
 /**
  * Check: https://developer.android.com/reference/androidx/biometric/BiometricPrompt
  */
-export const AndroidErrorCode = {
+export const AndroidErrorCode = Object.freeze({
   1: ErrorCode.BiometryNotAvailable,    // ERROR_HW_UNAVAILABLE
   2: ErrorCode.Generic,                 // ERROR_UNABLE_TO_PROCESS
   3: ErrorCode.Generic,                 // ERROR_TIMEOUT
@@ -26,12 +26,12 @@ export const AndroidErrorCode = {
   15: ErrorCode.Generic,                // ERROR_SECURITY_UPDATE_REQUIRED
   1000: ErrorCode.Generic,              // ERROR_INVALID_PROMPT_PARAMETERS (custom error)
   1001: ErrorCode.BiometryNotAvailable, // ERROR_INVALID_SIGNATURE (custom error)
-};
+});
 
 /**
  * Check: https://developer.apple.com/documentation/security/1542001-security_framework_result_codes
  */
-export const IOSErrorCode = {
+export const IOSErrorCode = Object.freeze({
   '-128': ErrorCode.Canceled,               // errSecUserCanceled: User canceled the operation.
   '-25291': ErrorCode.BiometryNotAvailable, // errSecNotAvailable: No keychain is available. You may need to restart your computer.
   '-25292': ErrorCode.Generic,              // errSecReadOnly: This keychain cannot be modified.
@@ -62,11 +62,18 @@ export const IOSErrorCode = {
   '-25317': ErrorCode.Generic,              // errSecDataNotModifiable: The contents of this item cannot be modified.
   '-25318': ErrorCode.Generic,              // errSecCreateChainFailed: One or more certificates required to validate this certificate cannot be found.
   '-25319': ErrorCode.Generic,              // errSecInvalidPrefsDomain: The specified preferences domain is not valid.
-};
+});
 
 export default class ECCError extends Error {
   constructor(errorCode, nativeErrorCode) {
-    super('ECC error');
+    super('ECCError');
+
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, ECCError);
+    }
+
+    this.name = 'ECCError';
+
     this.code = errorCode;
     this.nativeCode = nativeErrorCode;
   }
